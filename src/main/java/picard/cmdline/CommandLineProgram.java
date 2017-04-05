@@ -202,7 +202,9 @@ public abstract class CommandLineProgram {
 
         int ret = -1;
         try {
+            System.out.println("Start");
             ret = doWork();
+            System.out.println("Stop");
         } finally {
             try {
                 // Emit the time even if program throws
