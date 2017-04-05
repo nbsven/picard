@@ -83,6 +83,7 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
                                 final boolean assumeSorted,
                                 final long stopAfter,
                                 final Collection<SinglePassSamProgram> programs) {
+        long timeStart=System.nanoTime();
 
         // Setup the standard inputs
         IOUtil.assertFileIsReadable(input);
@@ -102,6 +103,11 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
             }
         }
 
+        long timeStop=System.nanoTime();
+        long total=timeStop-timeStart;
+        System.out.println("part1="+total);
+        timeStart=System.nanoTime();
+
         // Check on the sort order of the BAM file
         {
             final SortOrder sort = in.getFileHeader().getSortOrder();
@@ -116,12 +122,22 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
             }
         }
 
+        timeStop=System.nanoTime();
+        total=timeStop-timeStart;
+        System.out.println("part2="+total);
+        timeStart=System.nanoTime();
+
         // Call the abstract setup method!
         boolean anyUseNoRefReads = false;
         for (final SinglePassSamProgram program : programs) {
             program.setup(in.getFileHeader(), input);
             anyUseNoRefReads = anyUseNoRefReads || program.usesNoRefReads();
         }
+
+        timeStop=System.nanoTime();
+        total=timeStop-timeStart;
+        System.out.println("part3="+total);
+        timeStart=System.nanoTime();
 
 
         final ProgressLogger progress = new ProgressLogger(log);
@@ -150,6 +166,9 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
                 break;
             }
         }
+        timeStop=System.nanoTime();
+        total=timeStop-timeStart;
+        System.out.println("part4="+total);
 
         CloserUtil.close(in);
 

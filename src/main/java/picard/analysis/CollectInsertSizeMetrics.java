@@ -151,36 +151,36 @@ public class CollectInsertSizeMetrics extends SinglePassSamProgram {
         final MetricsFile<InsertSizeMetrics, Integer> file = getMetricsFile();
         multiCollector.addAllLevelsToFile(file);
 
-        if(file.getNumHistograms() == 0) {
-            //can happen if user sets MINIMUM_PCT = 0.5, etc.
-            log.warn("All data categories were discarded because they contained < " + MINIMUM_PCT +
-                     " of the total aligned paired data.");
-            final InsertSizeMetricsCollector.PerUnitInsertSizeMetricsCollector allReadsCollector = (InsertSizeMetricsCollector.PerUnitInsertSizeMetricsCollector) multiCollector.getAllReadsCollector();
-            log.warn("Total mapped pairs in all categories: " + (allReadsCollector == null ? allReadsCollector : allReadsCollector.getTotalInserts()));
-        }
-        else  {
-            file.write(OUTPUT);
-
-            final int rResult;
-            if(HISTOGRAM_WIDTH == null) {
-                rResult = RExecutor.executeFromClasspath(
-                    Histogram_R_SCRIPT,
-                    OUTPUT.getAbsolutePath(),
-                    Histogram_FILE.getAbsolutePath(),
-                    INPUT.getName());
-            } else {
-                rResult = RExecutor.executeFromClasspath(
-                    Histogram_R_SCRIPT,
-                    OUTPUT.getAbsolutePath(),
-                    Histogram_FILE.getAbsolutePath(),
-                    INPUT.getName(),
-                    String.valueOf(HISTOGRAM_WIDTH) ); //Histogram_WIDTH is passed because R automatically sets Histogram width to the last
-                                                         //bin that has data, which may be less than Histogram_WIDTH and confuse the user.
-            }
-
-            if (rResult != 0) {
-                throw new PicardException("R script " + Histogram_R_SCRIPT + " failed with return code " + rResult);
-            }
-        }
+//        if(file.getNumHistograms() == 0) {
+//            //can happen if user sets MINIMUM_PCT = 0.5, etc.
+//            log.warn("All data categories were discarded because they contained < " + MINIMUM_PCT +
+//                     " of the total aligned paired data.");
+//            final InsertSizeMetricsCollector.PerUnitInsertSizeMetricsCollector allReadsCollector = (InsertSizeMetricsCollector.PerUnitInsertSizeMetricsCollector) multiCollector.getAllReadsCollector();
+//            log.warn("Total mapped pairs in all categories: " + (allReadsCollector == null ? allReadsCollector : allReadsCollector.getTotalInserts()));
+//        }
+//        else  {
+//            file.write(OUTPUT);
+//
+//            final int rResult;
+//            if(HISTOGRAM_WIDTH == null) {
+//                rResult = RExecutor.executeFromClasspath(
+//                    Histogram_R_SCRIPT,
+//                    OUTPUT.getAbsolutePath(),
+//                    Histogram_FILE.getAbsolutePath(),
+//                    INPUT.getName());
+//            } else {
+//                rResult = RExecutor.executeFromClasspath(
+//                    Histogram_R_SCRIPT,
+//                    OUTPUT.getAbsolutePath(),
+//                    Histogram_FILE.getAbsolutePath(),
+//                    INPUT.getName(),
+//                    String.valueOf(HISTOGRAM_WIDTH) ); //Histogram_WIDTH is passed because R automatically sets Histogram width to the last
+//                                                         //bin that has data, which may be less than Histogram_WIDTH and confuse the user.
+//            }
+//
+//            if (rResult != 0) {
+//                throw new PicardException("R script " + Histogram_R_SCRIPT + " failed with return code " + rResult);
+//            }
+//        }
     }
 }
