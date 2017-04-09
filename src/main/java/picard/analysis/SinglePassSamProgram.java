@@ -42,9 +42,10 @@ import picard.cmdline.Option;
 import picard.cmdline.StandardOptionDefinitions;
 
 import java.io.File;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Iterator;
+import java.util.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Super class that is designed to provide some consistent structure between subclasses that
@@ -150,27 +151,14 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
         long tStart=0;
         long tStop=0;
 
+        int MAX_SIZE=10000;
+        List<SAMRecord> records=new ArrayList<>(MAX_SIZE);
+
+        ExecutorService service= Executors.newCachedThreadPool();
+
         while (iterator.hasNext()){
-            final SAMRecord rec= (SAMRecord) iterator.next();
-            final ReferenceSequence ref;
-            tStart=System.nanoTime();
-            if (walker == null || rec.getReferenceIndex() == SAMRecord.NO_ALIGNMENT_REFERENCE_INDEX) {
-                ref = null;
-            } else {
-                ref = walker.get(rec.getReferenceIndex());
-            }
-            tStop=System.nanoTime();
-            totalRead+=tStop-tStart;
-
-            tStart=System.nanoTime();
-            for (final SinglePassSamProgram program : programs) {
-                program.acceptRead(rec, ref);
-            }
-
-            progress.record(rec);
-
-            tStop=System.nanoTime();
-            totalProcess+=tStop-tStart;
+            SAMRecord rec= (SAMRecord) iterator.next();
+            records.add(rec);
 
             tStart=System.nanoTime();
             // See if we need to terminate early?
@@ -184,7 +172,43 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
             }
             tStop=System.nanoTime();
             totalCheck+=tStop-tStart;
+            if(records.size()<MAX_SIZE){
+                continue;
+            }
+            final List<SAMRecord> tmpRecords=records;
+            records=new ArrayList<>(MAX_SIZE);
+
+            service.submit(new Runnable() {
+                @Override
+                public void run() {
+
+                    for(SAMRecord rec:tmpRecords) {
+                        ReferenceSequence ref;
+                        if (walker == null || rec.getReferenceIndex() == SAMRecord.NO_ALIGNMENT_REFERENCE_INDEX) {
+                            ref = null;
+                        } else {
+                            ref = walker.get(rec.getReferenceIndex());
+                        }
+
+                        for (final SinglePassSamProgram program : programs) {
+                            program.acceptRead(rec, ref);
+                        }
+
+                        progress.record(rec);
+                    }
+                }
+            });
+
+
+
         }
+        service.shutdown();
+        try {
+            service.awaitTermination(1, TimeUnit.DAYS);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
         timeStop=System.nanoTime();
         total=timeStop-timeStart;
         System.out.println("part4="+total);
