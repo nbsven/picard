@@ -44,6 +44,7 @@ import picard.cmdline.StandardOptionDefinitions;
 import java.io.File;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Iterator;
 
 /**
  * Super class that is designed to provide some consistent structure between subclasses that
@@ -141,8 +142,10 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
 
 
         final ProgressLogger progress = new ProgressLogger(log);
+        Iterator iterator=in.iterator();
 
-        for (final SAMRecord rec : in) {
+        while (iterator.hasNext()){
+            final SAMRecord rec= (SAMRecord) iterator.next();
             final ReferenceSequence ref;
             if (walker == null || rec.getReferenceIndex() == SAMRecord.NO_ALIGNMENT_REFERENCE_INDEX) {
                 ref = null;
