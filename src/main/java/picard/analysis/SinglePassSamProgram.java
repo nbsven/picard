@@ -144,21 +144,35 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
         final ProgressLogger progress = new ProgressLogger(log);
         Iterator iterator=in.iterator();
 
+        long totalRead=0;
+        long totalProcess=0;
+        long totalCheck=0;
+        long tStart=0;
+        long tStop=0;
+
         while (iterator.hasNext()){
             final SAMRecord rec= (SAMRecord) iterator.next();
             final ReferenceSequence ref;
+            tStart=System.nanoTime();
             if (walker == null || rec.getReferenceIndex() == SAMRecord.NO_ALIGNMENT_REFERENCE_INDEX) {
                 ref = null;
             } else {
                 ref = walker.get(rec.getReferenceIndex());
             }
+            tStop=System.nanoTime();
+            totalRead+=tStop-tStart;
 
+            tStart=System.nanoTime();
             for (final SinglePassSamProgram program : programs) {
                 program.acceptRead(rec, ref);
             }
 
             progress.record(rec);
 
+            tStop=System.nanoTime();
+            totalProcess+=tStop-tStart;
+
+            tStart=System.nanoTime();
             // See if we need to terminate early?
             if (stopAfter > 0 && progress.getCount() >= stopAfter) {
                 break;
@@ -168,10 +182,15 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
             if (!anyUseNoRefReads && rec.getReferenceIndex() == SAMRecord.NO_ALIGNMENT_REFERENCE_INDEX) {
                 break;
             }
+            tStop=System.nanoTime();
+            totalCheck+=tStop-tStart;
         }
         timeStop=System.nanoTime();
         total=timeStop-timeStart;
         System.out.println("part4="+total);
+        System.out.println("totalRead="+totalRead);
+        System.out.println("totalProcess="+totalProcess);
+        System.out.println("totalCheck="+totalCheck);
 
         CloserUtil.close(in);
 
