@@ -24,11 +24,8 @@
 
 package picard.analysis;
 
-import htsjdk.samtools.SAMFileHeader;
+import htsjdk.samtools.*;
 import htsjdk.samtools.SAMFileHeader.SortOrder;
-import htsjdk.samtools.SAMRecord;
-import htsjdk.samtools.SamReader;
-import htsjdk.samtools.SamReaderFactory;
 import htsjdk.samtools.reference.ReferenceSequence;
 import htsjdk.samtools.reference.ReferenceSequenceFileWalker;
 import htsjdk.samtools.util.CloserUtil;
@@ -43,9 +40,7 @@ import picard.cmdline.StandardOptionDefinitions;
 
 import java.io.File;
 import java.util.*;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -144,6 +139,10 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
         timeStart=System.nanoTime();
 
 
+
+
+        final List<Object[]> POISON_PILL=Collections.EMPTY_LIST;
+
         final ProgressLogger progress = new ProgressLogger(log);
         final Lock[] mutexes=new Lock[programs.size()];
         for(int i=0;i<programs.size();i++){
@@ -151,7 +150,7 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
         }
         final Lock mutex=new ReentrantLock();
 
-        Iterator iterator=in.iterator();
+        SAMRecordIterator iterator=in.iterator();
 
         long totalRead=0;
         long totalProcess=0;
@@ -161,13 +160,66 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
 
         int MAX_SIZE=10000;
         List<Object[]> pairs=new ArrayList<>(MAX_SIZE);
+        final BlockingQueue<List<Object[]>> queue=new LinkedBlockingQueue<>(10);
 
-        ExecutorService service= Executors.newCachedThreadPool();
+        final ExecutorService service= Executors.newCachedThreadPool();
+
+        Semaphore sem=new Semaphore(6);
+
+        service.execute(new Runnable() {
+            @Override
+            public void run() {
+                while (true){
+                    try {
+                        final List<Object[]> tmpPairs = queue.take();
+
+                        if(tmpPairs.isEmpty()){
+                            return;
+                        }
+                        sem.acquire();
+
+                        service.submit(new Runnable() {
+                                @Override
+                                public void run() {
+
+                                    for (Object[] pair : tmpPairs) {
+                                        SAMRecord rec = (SAMRecord) pair[0];
+                                        ReferenceSequence ref = (ReferenceSequence) pair[1];
+
+
+                                        for (int i=0;i<programs.size();i++) {
+                                            SinglePassSamProgram program=programs.iterator().next();
+                                            mutexes[i].lock();
+                                            try{
+                                                program.acceptRead(rec, ref);
+                                            }finally {
+                                                mutexes[i].unlock();
+                                            }
+                                        }
+                                        mutex.lock();
+                                        try{
+                                            progress.record(rec);
+                                        }finally {
+                                            mutex.unlock();
+                                        }
+                                    }
+                                    sem.release();
+                                }
+                            });
+
+
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                }
+
+            }
+        });
         boolean flag=iterator.hasNext();
 
         while (flag){
             tStart=System.nanoTime();
-            SAMRecord rec= (SAMRecord) iterator.next();
+            SAMRecord rec= iterator.next();
 
             ReferenceSequence ref;
             if (walker == null || rec.getReferenceIndex() == SAMRecord.NO_ALIGNMENT_REFERENCE_INDEX) {
@@ -199,43 +251,26 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
             if(pairs.size()<MAX_SIZE&&flag){
                 continue;
             }
-            final List<Object[]> tmpPairs=pairs;
+
+            try {
+                queue.put(pairs);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+
             pairs=new ArrayList<>(MAX_SIZE);
-
-
-            service.submit(new Runnable() {
-                @Override
-                public void run() {
-
-                    for (Object[] pair : tmpPairs) {
-                        SAMRecord rec = (SAMRecord) pair[0];
-                        ReferenceSequence ref = (ReferenceSequence) pair[1];
-
-
-                        for (int i=0;i<programs.size();i++) {
-                            SinglePassSamProgram program=programs.iterator().next();
-                            mutexes[i].lock();
-                            try{
-                                program.acceptRead(rec, ref);
-                            }finally {
-                                mutexes[i].unlock();
-                            }
-                        }
-                        mutex.lock();
-                        try{
-                            progress.record(rec);
-                        }finally {
-                            mutex.unlock();
-                        }
-                    }
-
-                }
-            });
 
         }
         service.shutdown();
         try {
             service.awaitTermination(1, TimeUnit.DAYS);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
+        System.out.println(queue.isEmpty());
+        try {
+            queue.put(POISON_PILL);
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
