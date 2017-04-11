@@ -145,7 +145,12 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
 
 
         final ProgressLogger progress = new ProgressLogger(log);
-        final Lock mutex=new ReentrantLock(true);
+        final Lock[] mutexes=new Lock[programs.size()];
+        for(int i=0;i<programs.size();i++){
+            mutexes[i]=new ReentrantLock(true);
+        }
+        final Lock mutex=new ReentrantLock();
+
         Iterator iterator=in.iterator();
 
         long totalRead=0;
@@ -207,11 +212,21 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
                         ReferenceSequence ref = (ReferenceSequence) pair[1];
 
 
-                        for (final SinglePassSamProgram program : programs) {
-                            program.acceptRead(rec, ref);
+                        for (int i=0;i<programs.size();i++) {
+                            SinglePassSamProgram program=programs.iterator().next();
+                            mutexes[i].lock();
+                            try{
+                                program.acceptRead(rec, ref);
+                            }finally {
+                                mutexes[i].unlock();
+                            }
                         }
-
-                        progress.record(rec);
+                        mutex.lock();
+                        try{
+                            progress.record(rec);
+                        }finally {
+                            mutex.unlock();
+                        }
                     }
 
                 }
