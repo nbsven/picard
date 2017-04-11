@@ -46,6 +46,8 @@ import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Super class that is designed to provide some consistent structure between subclasses that
@@ -143,6 +145,7 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
 
 
         final ProgressLogger progress = new ProgressLogger(log);
+        final Lock mutex=new ReentrantLock(true);
         Iterator iterator=in.iterator();
 
         long totalRead=0;
@@ -152,14 +155,53 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
         long tStop=0;
 
         int MAX_SIZE=10000;
-        List<SAMRecord> records=new ArrayList<>(MAX_SIZE);
+        List<Object[]> pairs=new ArrayList<>(MAX_SIZE);
 
         ExecutorService service= Executors.newCachedThreadPool();
 
         while (iterator.hasNext()){
             SAMRecord rec= (SAMRecord) iterator.next();
-            records.add(rec);
 
+
+
+            ReferenceSequence ref;
+            if (walker == null || rec.getReferenceIndex() == SAMRecord.NO_ALIGNMENT_REFERENCE_INDEX) {
+                ref = null;
+            } else {
+                ref = walker.get(rec.getReferenceIndex());
+            }
+
+            pairs.add(new Object[]{rec,ref});
+
+            if(pairs.size()<MAX_SIZE){
+                continue;
+            }
+            final List<Object[]> tmpPairs=pairs;
+            pairs=new ArrayList<>(MAX_SIZE);
+
+
+            service.submit(new Runnable() {
+                @Override
+                public void run() {
+                    mutex.lock();
+                    try {
+                        for (Object[] pair : tmpPairs) {
+                            SAMRecord rec = (SAMRecord) pair[0];
+                            ReferenceSequence ref = (ReferenceSequence) pair[1];
+
+
+                            for (final SinglePassSamProgram program : programs) {
+                                program.acceptRead(rec, ref);
+                            }
+
+                            progress.record(rec);
+                        }
+                    }finally {
+                        mutex.unlock();
+                    }
+
+                }
+            });
             tStart=System.nanoTime();
             // See if we need to terminate early?
             if (stopAfter > 0 && progress.getCount() >= stopAfter) {
@@ -172,33 +214,6 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
             }
             tStop=System.nanoTime();
             totalCheck+=tStop-tStart;
-            if(records.size()<MAX_SIZE){
-                continue;
-            }
-            final List<SAMRecord> tmpRecords=records;
-            records=new ArrayList<>(MAX_SIZE);
-
-            service.submit(new Runnable() {
-                @Override
-                public void run() {
-
-                    for(SAMRecord rec:tmpRecords) {
-                        ReferenceSequence ref;
-                        if (walker == null || rec.getReferenceIndex() == SAMRecord.NO_ALIGNMENT_REFERENCE_INDEX) {
-                            ref = null;
-                        } else {
-                            ref = walker.get(rec.getReferenceIndex());
-                        }
-
-                        for (final SinglePassSamProgram program : programs) {
-                            program.acceptRead(rec, ref);
-                        }
-
-                        progress.record(rec);
-                    }
-                }
-            });
-
 
 
         }
