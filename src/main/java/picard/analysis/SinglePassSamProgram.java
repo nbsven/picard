@@ -160,13 +160,14 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
 
         int MAX_SIZE=10000;
         List<Object[]> pairs=new ArrayList<>(MAX_SIZE);
-        final BlockingQueue<List<Object[]>> queue=new LinkedBlockingQueue<>(10);
+        final BlockingQueue<List<Object[]>> queue=new LinkedBlockingQueue<>(30);
 
-        final ExecutorService service= Executors.newCachedThreadPool();
+        final ExecutorService service= Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
+        ExecutorService supportService=Executors.newSingleThreadExecutor();
 
         Semaphore sem=new Semaphore(6);
 
-        service.execute(new Runnable() {
+        supportService.execute(new Runnable() {
             @Override
             public void run() {
                 while (true){
@@ -261,6 +262,19 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
             pairs=new ArrayList<>(MAX_SIZE);
 
         }
+        System.out.println(queue.isEmpty());
+        try {
+            queue.put(POISON_PILL);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        supportService.shutdown();
+        try {
+            supportService.awaitTermination(1,TimeUnit.DAYS);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
         service.shutdown();
         try {
             service.awaitTermination(1, TimeUnit.DAYS);
@@ -268,12 +282,7 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
             e.printStackTrace();
         }
 
-        System.out.println(queue.isEmpty());
-        try {
-            queue.put(POISON_PILL);
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
+
 
         timeStop=System.nanoTime();
         total=timeStop-timeStart;
