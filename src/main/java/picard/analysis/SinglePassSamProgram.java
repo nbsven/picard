@@ -158,8 +158,9 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
         List<Object[]> pairs=new ArrayList<>(MAX_SIZE);
 
         ExecutorService service= Executors.newCachedThreadPool();
+        boolean flag=iterator.hasNext();
 
-        while (iterator.hasNext()){
+        while (flag){
             SAMRecord rec= (SAMRecord) iterator.next();
 
 
@@ -173,7 +174,22 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
 
             pairs.add(new Object[]{rec,ref});
 
-            if(pairs.size()<MAX_SIZE){
+            flag=iterator.hasNext();
+
+            tStart=System.nanoTime();
+            // See if we need to terminate early?
+            if (stopAfter > 0 && progress.getCount() >= stopAfter) {
+                flag=false;
+            }
+
+            // And see if we're into the unmapped reads at the end
+            if (!anyUseNoRefReads && rec.getReferenceIndex() == SAMRecord.NO_ALIGNMENT_REFERENCE_INDEX) {
+                flag=false;
+            }
+            tStop=System.nanoTime();
+            totalCheck+=tStop-tStart;
+
+            if(pairs.size()<MAX_SIZE&&flag){
                 continue;
             }
             final List<Object[]> tmpPairs=pairs;
@@ -183,38 +199,22 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
             service.submit(new Runnable() {
                 @Override
                 public void run() {
-                    mutex.lock();
-                    try {
-                        for (Object[] pair : tmpPairs) {
-                            SAMRecord rec = (SAMRecord) pair[0];
-                            ReferenceSequence ref = (ReferenceSequence) pair[1];
+
+                    for (Object[] pair : tmpPairs) {
+                        SAMRecord rec = (SAMRecord) pair[0];
+                        ReferenceSequence ref = (ReferenceSequence) pair[1];
 
 
-                            for (final SinglePassSamProgram program : programs) {
-                                program.acceptRead(rec, ref);
-                            }
-
-                            progress.record(rec);
+                        for (final SinglePassSamProgram program : programs) {
+                            program.acceptRead(rec, ref);
                         }
-                    }finally {
-                        mutex.unlock();
+
+                        progress.record(rec);
                     }
+
 
                 }
             });
-            tStart=System.nanoTime();
-            // See if we need to terminate early?
-            if (stopAfter > 0 && progress.getCount() >= stopAfter) {
-                break;
-            }
-
-            // And see if we're into the unmapped reads at the end
-            if (!anyUseNoRefReads && rec.getReferenceIndex() == SAMRecord.NO_ALIGNMENT_REFERENCE_INDEX) {
-                break;
-            }
-            tStop=System.nanoTime();
-            totalCheck+=tStop-tStart;
-
 
         }
         service.shutdown();
