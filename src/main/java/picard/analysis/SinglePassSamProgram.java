@@ -161,9 +161,8 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
         boolean flag=iterator.hasNext();
 
         while (flag){
+            tStart=System.nanoTime();
             SAMRecord rec= (SAMRecord) iterator.next();
-
-
 
             ReferenceSequence ref;
             if (walker == null || rec.getReferenceIndex() == SAMRecord.NO_ALIGNMENT_REFERENCE_INDEX) {
@@ -175,6 +174,9 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
             pairs.add(new Object[]{rec,ref});
 
             flag=iterator.hasNext();
+
+            tStop=System.nanoTime();
+            totalRead+=tStop-tStart;
 
             tStart=System.nanoTime();
             // See if we need to terminate early?
@@ -212,7 +214,6 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
                         progress.record(rec);
                     }
 
-
                 }
             });
 
@@ -226,6 +227,7 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
 
         timeStop=System.nanoTime();
         total=timeStop-timeStart;
+        totalProcess=total-totalRead-totalCheck;
         System.out.println("part4="+total);
         System.out.println("totalRead="+totalRead);
         System.out.println("totalProcess="+totalProcess);
