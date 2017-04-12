@@ -146,11 +146,11 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
         final ProgressLogger progress = new ProgressLogger(log);
         final Lock[] mutexes=new Lock[programs.size()];
         for(int i=0;i<programs.size();i++){
-            mutexes[i]=new ReentrantLock(true);
+            mutexes[i]=new ReentrantLock();
         }
         final Lock mutex=new ReentrantLock();
 
-        SAMRecordIterator iterator=in.iterator();
+        Iterator iterator=in.iterator();
 
         long totalRead=0;
         long totalProcess=0;
@@ -158,14 +158,16 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
         long tStart=0;
         long tStop=0;
 
-        int MAX_SIZE=10000;
+        int MAX_SIZE=100;
         List<Object[]> pairs=new ArrayList<>(MAX_SIZE);
-        final BlockingQueue<List<Object[]>> queue=new LinkedBlockingQueue<>(30);
+        int numberOfProcessors=Runtime.getRuntime().availableProcessors();
+        System.out.println(numberOfProcessors);
+        final BlockingQueue<List<Object[]>> queue=new LinkedBlockingQueue<>(10*numberOfProcessors);
 
-        final ExecutorService service= Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
+        final ExecutorService service= Executors.newFixedThreadPool(1+numberOfProcessors/2);
         ExecutorService supportService=Executors.newSingleThreadExecutor();
 
-        Semaphore sem=new Semaphore(6);
+        Semaphore sem=new Semaphore(numberOfProcessors);
 
         supportService.execute(new Runnable() {
             @Override
@@ -197,12 +199,9 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
                                                 mutexes[i].unlock();
                                             }
                                         }
-                                        mutex.lock();
-                                        try{
-                                            progress.record(rec);
-                                        }finally {
-                                            mutex.unlock();
-                                        }
+
+                                        progress.record(rec);
+
                                     }
                                     sem.release();
                                 }
@@ -219,8 +218,9 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
         boolean flag=iterator.hasNext();
 
         while (flag){
+
             tStart=System.nanoTime();
-            SAMRecord rec= iterator.next();
+            SAMRecord rec= (SAMRecord) iterator.next();
 
             ReferenceSequence ref;
             if (walker == null || rec.getReferenceIndex() == SAMRecord.NO_ALIGNMENT_REFERENCE_INDEX) {
@@ -253,11 +253,13 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
                 continue;
             }
 
+
             try {
                 queue.put(pairs);
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
+
 
             pairs=new ArrayList<>(MAX_SIZE);
 
