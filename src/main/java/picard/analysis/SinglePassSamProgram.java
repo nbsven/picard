@@ -137,19 +137,19 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
         }
         final Lock mutex=new ReentrantLock();
 
-        Iterator iterator=in.iterator();
+        Iterator<SAMRecord> iterator=in.iterator();
 
 
         int MAX_SIZE=100;
         List<Object[]> pairs=new ArrayList<>(MAX_SIZE);
         int numberOfProcessors=Runtime.getRuntime().availableProcessors();
         System.out.println(numberOfProcessors);
-        final BlockingQueue<List<Object[]>> queue=new LinkedBlockingQueue<>(10*numberOfProcessors);
+        final BlockingQueue<List<Object[]>> queue=new LinkedBlockingQueue<>(5*numberOfProcessors);
 
         final ExecutorService service= Executors.newFixedThreadPool(1+numberOfProcessors/2);
         ExecutorService supportService=Executors.newSingleThreadExecutor();
 
-        Semaphore sem=new Semaphore(numberOfProcessors);
+        Semaphore sem=new Semaphore(1);
 
         supportService.execute(new Runnable() {
             @Override
@@ -171,9 +171,9 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
                                         SAMRecord rec = (SAMRecord) pair[0];
                                         ReferenceSequence ref = (ReferenceSequence) pair[1];
 
-
+                                        Iterator<SinglePassSamProgram>  programIterator=programs.iterator();
                                         for (int i=0;i<programs.size();i++) {
-                                            SinglePassSamProgram program=programs.iterator().next();
+                                            SinglePassSamProgram program=programIterator.next();
                                             mutexes[i].lock();
                                             try{
                                                 program.acceptRead(rec, ref);
@@ -202,7 +202,7 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
         boolean flag=iterator.hasNext();
         while (flag){
 
-            SAMRecord rec= (SAMRecord) iterator.next();
+            SAMRecord rec= iterator.next();
 
             ReferenceSequence ref;
             if (walker == null || rec.getReferenceIndex() == SAMRecord.NO_ALIGNMENT_REFERENCE_INDEX) {
