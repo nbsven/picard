@@ -82,7 +82,6 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
                                 final boolean assumeSorted,
                                 final long stopAfter,
                                 final Collection<SinglePassSamProgram> programs) {
-        long timeStart=System.nanoTime();
 
         // Setup the standard inputs
         IOUtil.assertFileIsReadable(input);
@@ -102,10 +101,6 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
             }
         }
 
-        long timeStop=System.nanoTime();
-        long total=timeStop-timeStart;
-        System.out.println("part1="+total);
-        timeStart=System.nanoTime();
 
         // Check on the sort order of the BAM file
         {
@@ -121,10 +116,6 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
             }
         }
 
-        timeStop=System.nanoTime();
-        total=timeStop-timeStart;
-        System.out.println("part2="+total);
-        timeStart=System.nanoTime();
 
         // Call the abstract setup method!
         boolean anyUseNoRefReads = false;
@@ -133,10 +124,6 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
             anyUseNoRefReads = anyUseNoRefReads || program.usesNoRefReads();
         }
 
-        timeStop=System.nanoTime();
-        total=timeStop-timeStart;
-        System.out.println("part3="+total);
-        timeStart=System.nanoTime();
 
 
 
@@ -152,11 +139,6 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
 
         Iterator iterator=in.iterator();
 
-        long totalRead=0;
-        long totalProcess=0;
-        long totalCheck=0;
-        long tStart=0;
-        long tStop=0;
 
         int MAX_SIZE=100;
         List<Object[]> pairs=new ArrayList<>(MAX_SIZE);
@@ -215,11 +197,11 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
 
             }
         });
-        boolean flag=iterator.hasNext();
 
+
+        boolean flag=iterator.hasNext();
         while (flag){
 
-            tStart=System.nanoTime();
             SAMRecord rec= (SAMRecord) iterator.next();
 
             ReferenceSequence ref;
@@ -233,10 +215,6 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
 
             flag=iterator.hasNext();
 
-            tStop=System.nanoTime();
-            totalRead+=tStop-tStart;
-
-            tStart=System.nanoTime();
             // See if we need to terminate early?
             if (stopAfter > 0 && progress.getCount() >= stopAfter) {
                 flag=false;
@@ -246,8 +224,7 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
             if (!anyUseNoRefReads && rec.getReferenceIndex() == SAMRecord.NO_ALIGNMENT_REFERENCE_INDEX) {
                 flag=false;
             }
-            tStop=System.nanoTime();
-            totalCheck+=tStop-tStart;
+
 
             if(pairs.size()<MAX_SIZE&&flag){
                 continue;
@@ -260,25 +237,15 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
                 e.printStackTrace();
             }
 
-
             pairs=new ArrayList<>(MAX_SIZE);
 
         }
-        System.out.println(queue.isEmpty());
+
         try {
             queue.put(POISON_PILL);
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
-        supportService.shutdown();
-        try {
+            supportService.shutdown();
             supportService.awaitTermination(1,TimeUnit.DAYS);
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
-
-        service.shutdown();
-        try {
+            service.shutdown();
             service.awaitTermination(1, TimeUnit.DAYS);
         } catch (InterruptedException e) {
             e.printStackTrace();
@@ -286,13 +253,6 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
 
 
 
-        timeStop=System.nanoTime();
-        total=timeStop-timeStart;
-        totalProcess=total-totalRead-totalCheck;
-        System.out.println("part4="+total);
-        System.out.println("totalRead="+totalRead);
-        System.out.println("totalProcess="+totalProcess);
-        System.out.println("totalCheck="+totalCheck);
 
         CloserUtil.close(in);
 
