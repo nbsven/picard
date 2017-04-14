@@ -182,7 +182,6 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
                                             }
                                         }
 
-                                        progress.record(rec);
 
                                     }
                                     sem.release();
@@ -212,6 +211,8 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
             }
 
             pairs.add(new Object[]{rec,ref});
+
+            progress.record(rec);
 
             flag=iterator.hasNext();
 
