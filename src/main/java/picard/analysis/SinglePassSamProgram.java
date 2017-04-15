@@ -82,6 +82,7 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
                                 final boolean assumeSorted,
                                 final long stopAfter,
                                 final Collection<SinglePassSamProgram> programs) {
+        System.out.println("my");
 
         // Setup the standard inputs
         IOUtil.assertFileIsReadable(input);
@@ -147,13 +148,16 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
 
         final BlockingQueue<List<Object[]>> queue=new LinkedBlockingQueue<>(5*numberOfProcessors);
 
+        if(numberOfProcessors>programs.size()){
+            numberOfProcessors=programs.size();
+        }
         //service for workers
-        final ExecutorService service= Executors.newFixedThreadPool(1+numberOfProcessors/3);
+        final ExecutorService service= Executors.newFixedThreadPool(numberOfProcessors);
         //service for task manager
         ExecutorService supportService=Executors.newSingleThreadExecutor();
 
 
-        Semaphore sem=new Semaphore((1+numberOfProcessors/3)*2);
+        Semaphore sem=new Semaphore(numberOfProcessors);
         //task manager need to execute workers
         supportService.execute(new Runnable() {
             @Override
