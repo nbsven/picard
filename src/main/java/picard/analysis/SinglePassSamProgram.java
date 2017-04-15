@@ -125,32 +125,36 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
         }
 
 
+        final ProgressLogger progress = new ProgressLogger(log);
 
-
-
+        //Poison pill need to stop task manager
         final List<Object[]> POISON_PILL=Collections.EMPTY_LIST;
 
-        final ProgressLogger progress = new ProgressLogger(log);
+        //Mutexes for different programs
         final Lock[] mutexes=new Lock[programs.size()];
         for(int i=0;i<programs.size();i++){
             mutexes[i]=new ReentrantLock();
         }
-        final Lock mutex=new ReentrantLock();
 
+        //Iterator for Input file
         Iterator<SAMRecord> iterator=in.iterator();
 
-
+        //Capacity of pairs
         int MAX_SIZE=100;
         List<Object[]> pairs=new ArrayList<>(MAX_SIZE);
+
         int numberOfProcessors=Runtime.getRuntime().availableProcessors();
-        System.out.println(numberOfProcessors);
+
         final BlockingQueue<List<Object[]>> queue=new LinkedBlockingQueue<>(5*numberOfProcessors);
 
-        final ExecutorService service= Executors.newFixedThreadPool(1+numberOfProcessors/2);
+        //service for workers
+        final ExecutorService service= Executors.newFixedThreadPool(1+numberOfProcessors/3);
+        //service for task manager
         ExecutorService supportService=Executors.newSingleThreadExecutor();
 
-        Semaphore sem=new Semaphore(1);
 
+        Semaphore sem=new Semaphore((1+numberOfProcessors/3)*2);
+        //task manager need to execute workers
         supportService.execute(new Runnable() {
             @Override
             public void run() {
@@ -163,6 +167,7 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
                         }
                         sem.acquire();
 
+                        //submit worker
                         service.submit(new Runnable() {
                                 @Override
                                 public void run() {
@@ -200,7 +205,6 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
 
         boolean flag=iterator.hasNext();
         while (flag){
-
             SAMRecord rec= iterator.next();
 
             ReferenceSequence ref;
@@ -231,28 +235,30 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
                 continue;
             }
 
-
+            //put task for task manager
             try {
                 queue.put(pairs);
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
 
+            //reset pairs
             pairs=new ArrayList<>(MAX_SIZE);
 
         }
 
         try {
+            //inform task manager, that reading has finished
             queue.put(POISON_PILL);
+            //wait while task manager give all tasks to workers
             supportService.shutdown();
             supportService.awaitTermination(1,TimeUnit.DAYS);
+            //wait while workers finish their works
             service.shutdown();
             service.awaitTermination(1, TimeUnit.DAYS);
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
-
-
 
 
         CloserUtil.close(in);
