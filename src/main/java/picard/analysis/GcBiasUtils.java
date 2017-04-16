@@ -88,14 +88,16 @@ public class GcBiasUtils {
             ExecutorService service= Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
             Lock mutex=new ReentrantLock();
             final int SIZE=12000;
-            for (int i = 1; i <= lastWindowStart/SIZE; ++i) {
+            int last=lastWindowStart/SIZE;
+            if(last<1){
+                last=1;
+            }
+            for (int i = 1; i <= last; ++i) {
                 int tempStart=1+(i-1)*SIZE;
-                int tempStop=-1;
-                if(i==lastWindowStart/SIZE){
-
+                int tempStop;
+                if(i==last){
                     tempStop=lastWindowStart-1;
                 }else {
-
                     tempStop=i*SIZE;
                 }
                 final Integer start=tempStart;
