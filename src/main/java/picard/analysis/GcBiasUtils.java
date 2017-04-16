@@ -30,6 +30,11 @@ import htsjdk.samtools.reference.ReferenceSequenceFileFactory;
 import htsjdk.samtools.util.SequenceUtil;
 import htsjdk.samtools.util.StringUtil;
 import java.io.File;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 /** Utilities to calculate GC Bias
  * Created by kbergin on 9/23/15.
@@ -80,11 +85,44 @@ public class GcBiasUtils {
             final int lastWindowStart = refLength - windowSize;
 
             final CalculateGcState state = new GcBiasUtils().new CalculateGcState();
+            ExecutorService service= Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
+            Lock mutex=new ReentrantLock();
+            final int SIZE=12000;
+            for (int i = 1; i <= lastWindowStart/SIZE; ++i) {
+                int tempStart=1+(i-1)*SIZE;
+                int tempStop=-1;
+                if(i==lastWindowStart/SIZE){
 
-            for (int i = 1; i < lastWindowStart; ++i) {
-                final int windowEnd = i + windowSize;
-                final int gcBin = calculateGc(refBases, i, windowEnd, state);
-                if (gcBin != -1) windowsByGc[gcBin]++;
+                    tempStop=lastWindowStart-1;
+                }else {
+
+                    tempStop=i*SIZE;
+                }
+                final Integer start=tempStart;
+                final Integer stop=tempStop;
+                service.submit(new Runnable() {
+                    @Override
+                    public void run() {
+                        for (int i = start; i <= stop; ++i) {
+                            final int windowEnd = i + windowSize;
+                            final int gcBin = calculateGc(refBases, i, windowEnd, state);
+                            if (gcBin != -1) {
+                                mutex.lock();
+                                try {
+                                    windowsByGc[gcBin]++;
+                                } finally {
+                                    mutex.unlock();
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+            service.shutdown();
+            try {
+                service.awaitTermination(1, TimeUnit.DAYS);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
             }
         }
 
