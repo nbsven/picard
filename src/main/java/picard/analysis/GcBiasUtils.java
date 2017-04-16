@@ -92,7 +92,7 @@ public class GcBiasUtils {
         }
 
 
-        Semaphore sem=new Semaphore(numberOfProcessors+numberOfProcessors/2);
+        Semaphore sem=new Semaphore(3*numberOfProcessors/2);
         int count=0;
 
         while ((ref = refFile.nextSequence()) != null) {
@@ -103,7 +103,6 @@ public class GcBiasUtils {
 
             final CalculateGcState state = new GcBiasUtils().new CalculateGcState();
 
-            System.out.println(lastWindowStart);
             try {
                 sem.acquire();
             } catch (InterruptedException e) {

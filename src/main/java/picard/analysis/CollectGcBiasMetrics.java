@@ -161,11 +161,10 @@ public class CollectGcBiasMetrics extends SinglePassSamProgram {
         IOUtil.assertFileIsWritable(CHART_OUTPUT);
         IOUtil.assertFileIsWritable(SUMMARY_OUTPUT);
         IOUtil.assertFileIsReadable(REFERENCE_SEQUENCE);
-        long tstart=System.nanoTime();
+
         //Calculate windowsByGc for the reference sequence
         final int[] windowsByGc = GcBiasUtils.calculateRefWindowsByGc(BINS, REFERENCE_SEQUENCE, SCAN_WINDOW_SIZE);
-        long tstop=System.nanoTime();
-        System.out.println(tstop-tstart);
+
         //Delegate actual collection to GcBiasMetricCollector
         multiCollector = new GcBiasMetricsCollector(METRIC_ACCUMULATION_LEVEL, windowsByGc, header.getReadGroups(), SCAN_WINDOW_SIZE, IS_BISULFITE_SEQUENCED, ALSO_IGNORE_DUPLICATES);
     }

@@ -82,7 +82,6 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
                                 final boolean assumeSorted,
                                 final long stopAfter,
                                 final Collection<SinglePassSamProgram> programs) {
-        System.out.println("my");
 
         // Setup the standard inputs
         IOUtil.assertFileIsReadable(input);
