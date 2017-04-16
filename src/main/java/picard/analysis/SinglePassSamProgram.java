@@ -43,6 +43,7 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.logging.Logger;
 
 /**
  * Super class that is designed to provide some consistent structure between subclasses that
@@ -128,7 +129,7 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
         final ProgressLogger progress = new ProgressLogger(log);
 
         //Poison pill need to stop task manager
-        final List<Object[]> POISON_PILL=Collections.EMPTY_LIST;
+        final List<Object[]> POISON_PILL=Collections.emptyList();
 
         //Mutexes for different programs
         final Lock[] mutexes=new Lock[programs.size()];
@@ -199,6 +200,7 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
 
                     } catch (InterruptedException e) {
                         e.printStackTrace();
+                        Thread.currentThread().interrupt();
                     }
                 }
 
@@ -243,6 +245,7 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
                 queue.put(pairs);
             } catch (InterruptedException e) {
                 e.printStackTrace();
+                Thread.currentThread().interrupt();
             }
 
             //reset pairs
@@ -261,6 +264,7 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
             service.awaitTermination(1, TimeUnit.DAYS);
         } catch (InterruptedException e) {
             e.printStackTrace();
+            Thread.currentThread().interrupt();
         }
 
 

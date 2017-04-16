@@ -107,6 +107,7 @@ public class GcBiasUtils {
                 sem.acquire();
             } catch (InterruptedException e) {
                 e.printStackTrace();
+                Thread.currentThread().interrupt();
             }
 
             final int index=count%numberOfProcessors;
@@ -138,6 +139,7 @@ public class GcBiasUtils {
             service.awaitTermination(1, TimeUnit.DAYS);
         } catch (InterruptedException e) {
             e.printStackTrace();
+            Thread.currentThread().interrupt();
         }
 
         for(int i=0;i<numberOfProcessors;i++){
