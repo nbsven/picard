@@ -32,6 +32,7 @@ import htsjdk.samtools.util.StringUtil;
 import java.io.File;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -78,6 +79,22 @@ public class GcBiasUtils {
 
         final int [] windowsByGc = new int [windows];
 
+        int numberOfProcessors=Runtime.getRuntime().availableProcessors();
+        ExecutorService service= Executors.newFixedThreadPool(numberOfProcessors);
+        Lock[] mutexes=new ReentrantLock[numberOfProcessors];
+        for(int i=0;i<numberOfProcessors;i++){
+            mutexes[i]=new ReentrantLock();
+        }
+
+        final int [][] windowsByGcForProcessors= new int[numberOfProcessors][];
+        for(int i=0;i<numberOfProcessors;i++){
+            windowsByGcForProcessors[i]=new int[windows];
+        }
+
+
+        Semaphore sem=new Semaphore(numberOfProcessors+numberOfProcessors/2);
+        int count=0;
+
         while ((ref = refFile.nextSequence()) != null) {
             final byte[] refBases = ref.getBases();
             StringUtil.toUpperCase(refBases);
@@ -85,46 +102,48 @@ public class GcBiasUtils {
             final int lastWindowStart = refLength - windowSize;
 
             final CalculateGcState state = new GcBiasUtils().new CalculateGcState();
-            ExecutorService service= Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
-            Lock mutex=new ReentrantLock();
-            final int SIZE=12000;
-            int last=lastWindowStart/SIZE;
-            if(last<1){
-                last=1;
+
+            System.out.println(lastWindowStart);
+            try {
+                sem.acquire();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
             }
-            for (int i = 1; i <= last; ++i) {
-                int tempStart=1+(i-1)*SIZE;
-                int tempStop;
-                if(i==last){
-                    tempStop=lastWindowStart-1;
-                }else {
-                    tempStop=i*SIZE;
-                }
-                final Integer start=tempStart;
-                final Integer stop=tempStop;
-                service.submit(new Runnable() {
-                    @Override
-                    public void run() {
-                        for (int i = start; i <= stop; ++i) {
+
+            final int index=count%numberOfProcessors;
+            count++;
+            service.submit(new Runnable() {
+                @Override
+                public void run() {
+                    mutexes[index].lock();
+                    try {
+                        for (int i = 1; i < lastWindowStart; ++i) {
                             final int windowEnd = i + windowSize;
                             final int gcBin = calculateGc(refBases, i, windowEnd, state);
                             if (gcBin != -1) {
-                                mutex.lock();
-                                try {
-                                    windowsByGc[gcBin]++;
-                                } finally {
-                                    mutex.unlock();
-                                }
+                                windowsByGcForProcessors[index][gcBin]++;
                             }
                         }
+                    }finally {
+                        mutexes[index].unlock();
                     }
-                });
-            }
-            service.shutdown();
-            try {
-                service.awaitTermination(1, TimeUnit.DAYS);
-            } catch (InterruptedException e) {
-                e.printStackTrace();
+                    sem.release();
+                }
+            });
+
+
+
+        }
+        service.shutdown();
+        try {
+            service.awaitTermination(1, TimeUnit.DAYS);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
+        for(int i=0;i<numberOfProcessors;i++){
+            for(int j=0;j<windows;j++) {
+                windowsByGc[j] += windowsByGcForProcessors[i][j];
             }
         }
 
