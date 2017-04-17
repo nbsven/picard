@@ -235,7 +235,7 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
                 flag=false;
             }
 
-
+            System.out.println("test");
             if(pairs.size()<MAX_SIZE&&flag){
                 continue;
             }
