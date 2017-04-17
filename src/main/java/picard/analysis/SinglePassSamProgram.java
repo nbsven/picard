@@ -24,11 +24,8 @@
 
 package picard.analysis;
 
-import htsjdk.samtools.SAMFileHeader;
+import htsjdk.samtools.*;
 import htsjdk.samtools.SAMFileHeader.SortOrder;
-import htsjdk.samtools.SAMRecord;
-import htsjdk.samtools.SamReader;
-import htsjdk.samtools.SamReaderFactory;
 import htsjdk.samtools.reference.ReferenceSequence;
 import htsjdk.samtools.reference.ReferenceSequenceFileWalker;
 import htsjdk.samtools.util.CloserUtil;
@@ -42,8 +39,11 @@ import picard.cmdline.Option;
 import picard.cmdline.StandardOptionDefinitions;
 
 import java.io.File;
-import java.util.Arrays;
-import java.util.Collection;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.logging.Logger;
 
 /**
  * Super class that is designed to provide some consistent structure between subclasses that
@@ -102,6 +102,7 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
             }
         }
 
+
         // Check on the sort order of the BAM file
         {
             final SortOrder sort = in.getFileHeader().getSortOrder();
@@ -116,6 +117,7 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
             }
         }
 
+
         // Call the abstract setup method!
         boolean anyUseNoRefReads = false;
         for (final SinglePassSamProgram program : programs) {
@@ -126,30 +128,145 @@ public abstract class SinglePassSamProgram extends CommandLineProgram {
 
         final ProgressLogger progress = new ProgressLogger(log);
 
-        for (final SAMRecord rec : in) {
-            final ReferenceSequence ref;
+        //Poison pill need to stop task manager
+        final List<Object[]> POISON_PILL=Collections.emptyList();
+
+        //Mutexes for different programs
+        final Lock[] mutexes=new Lock[programs.size()];
+        for(int i=0;i<programs.size();i++){
+            mutexes[i]=new ReentrantLock();
+        }
+
+        //Iterator for Input file
+        Iterator<SAMRecord> iterator=in.iterator();
+
+        //Capacity of pairs
+        int MAX_SIZE=100;
+        List<Object[]> pairs=new ArrayList<>(MAX_SIZE);
+
+        int numberOfProcessors=Runtime.getRuntime().availableProcessors();
+
+        final BlockingQueue<List<Object[]>> queue=new LinkedBlockingQueue<>(5*numberOfProcessors);
+
+        if(numberOfProcessors>programs.size()){
+            numberOfProcessors=programs.size();
+        }
+        //service for workers
+        final ExecutorService service= Executors.newFixedThreadPool(numberOfProcessors);
+        //service for task manager
+        ExecutorService supportService=Executors.newSingleThreadExecutor();
+
+
+        Semaphore sem=new Semaphore(numberOfProcessors);
+        //task manager need to execute workers
+        supportService.execute(new Runnable() {
+            @Override
+            public void run() {
+                while (true){
+                    try {
+                        final List<Object[]> tmpPairs = queue.take();
+
+                        if(tmpPairs.isEmpty()){
+                            return;
+                        }
+                        sem.acquire();
+
+                        //submit worker
+                        service.submit(new Runnable() {
+                            @Override
+                            public void run() {
+
+                                for (Object[] pair : tmpPairs) {
+                                    SAMRecord rec = (SAMRecord) pair[0];
+                                    ReferenceSequence ref = (ReferenceSequence) pair[1];
+
+                                    Iterator<SinglePassSamProgram>  programIterator=programs.iterator();
+                                    for (int i=0;i<programs.size();i++) {
+                                        SinglePassSamProgram program=programIterator.next();
+                                        mutexes[i].lock();
+                                        try{
+                                            program.acceptRead(rec, ref);
+                                        }finally {
+                                            mutexes[i].unlock();
+                                        }
+                                    }
+
+
+                                }
+                                sem.release();
+                            }
+                        });
+
+
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                        Thread.currentThread().interrupt();
+                    }
+                }
+
+            }
+        });
+
+
+        boolean flag=iterator.hasNext();
+        while (flag){
+            SAMRecord rec= iterator.next();
+
+            ReferenceSequence ref;
             if (walker == null || rec.getReferenceIndex() == SAMRecord.NO_ALIGNMENT_REFERENCE_INDEX) {
                 ref = null;
             } else {
                 ref = walker.get(rec.getReferenceIndex());
             }
 
-            for (final SinglePassSamProgram program : programs) {
-                program.acceptRead(rec, ref);
-            }
+            pairs.add(new Object[]{rec,ref});
 
             progress.record(rec);
 
+            flag=iterator.hasNext();
+
             // See if we need to terminate early?
             if (stopAfter > 0 && progress.getCount() >= stopAfter) {
-                break;
+                flag=false;
             }
 
             // And see if we're into the unmapped reads at the end
             if (!anyUseNoRefReads && rec.getReferenceIndex() == SAMRecord.NO_ALIGNMENT_REFERENCE_INDEX) {
-                break;
+                flag=false;
             }
+
+
+            if(pairs.size()<MAX_SIZE&&flag){
+                continue;
+            }
+
+            //put task for task manager
+            try {
+                queue.put(pairs);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+                Thread.currentThread().interrupt();
+            }
+
+            //reset pairs
+            pairs=new ArrayList<>(MAX_SIZE);
+
         }
+
+        try {
+            //inform task manager, that reading has finished
+            queue.put(POISON_PILL);
+            //wait while task manager give all tasks to workers
+            supportService.shutdown();
+            supportService.awaitTermination(1,TimeUnit.DAYS);
+            //wait while workers finish their works
+            service.shutdown();
+            service.awaitTermination(1, TimeUnit.DAYS);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+            Thread.currentThread().interrupt();
+        }
+
 
         CloserUtil.close(in);
 
